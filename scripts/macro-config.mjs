@@ -1,4 +1,4 @@
-import { MODULE_ID, localize } from "./module-config.mjs";
+import { MODULE_ID, isValidLevelRange, localize } from "./module-config.mjs";
 
 export const FLAG_KEY = "macros";
 
@@ -32,8 +32,7 @@ export function getMacroSettings(activity) {
 export function getMacroLevel(activity, uuid) {
   const level = getMacroSettings(activity).find(setting => setting.uuid === uuid)?.level ?? {};
   const { min = null, max = null } = level;
-  if ( ![min, max].every(value => value === null || (Number.isSafeInteger(value) && value >= 0))
-    || (min !== null && max !== null && min > max) ) {
+  if ( !isValidLevelRange({ min, max }) ) {
     throw new Error(localize("ADVANCED_ACTIVITIES.LevelInvalid"));
   }
   return { min, max };

@@ -1,6 +1,4 @@
-import { MODULE_ID, localize } from "./module-config.mjs";
-
-const FLAG_KEY = "pendingActivations";
+import { MODULE_ID, localize, TIMING_FLAG_KEY as FLAG_KEY } from "./module-config.mjs";
 
 const patchedClasses = new WeakSet();
 const waiters = new Map();

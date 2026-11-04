@@ -1,5 +1,7 @@
 # Advanced Activities
 
+**Release:** 2.0.0.
+
 Extends D&D 5e item activities in Foundry VTT v14 with a new **Grant** activity, macros attached to activities, delayed activation, and per-activity visibility.
 
 **Requirements:** Foundry VTT 14.367 or newer and the D&D 5e system 6.0.6 or newer. The module adds no settings and no compendium content.
@@ -57,3 +59,9 @@ Activities with an activation time are scheduled instead of firing immediately.
 - A **Hide Activity** checkbox in an activity's visibility settings hides it from players. GMs still see and use it.
 - Hidden activities disappear from the activity choice dialog and item use.
 - If only one visible activity remains, it is used automatically. If none do, using the item shows its item card instead.
+
+## Development notes
+
+- `scripts/module-config.mjs` shares `TIMING_FLAG_KEY` (`pendingActivations`) between delayed activation and macro chat-card handling. Activation seconds continue to use `CONFIG.DND5E.timeUnits[type].conversion`, expressed by D&D 5e in minutes.
+- Grant and Macro settings use the shared `createLevelRangeGroup` and `isValidLevelRange` helpers. Bounds must be `null` (unbounded) or nonnegative safe integers; a bounded minimum cannot exceed a bounded maximum. Each caller retains its own saving and error-handling behavior.
+- The range UI uses D&D 5e's `DND5E.ACTIVITY.FIELDS.effects.element.level.label`, `DND5E.LevelLimit.Min` / `Max` labels and `systems/dnd5e/icons/svg/range-connector.svg`, verified against the bundled system source.

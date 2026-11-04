@@ -1,11 +1,10 @@
-import { MODULE_ID, localize } from "./module-config.mjs";
+import { MODULE_ID, localize, TIMING_FLAG_KEY } from "./module-config.mjs";
 import {
   FLAG_KEY, getMacroUuids, isMacroLevelEligible, renderMacroTooltip, reportMacroError, resolveMacro,
   resolveMacroTarget
 } from "./macro-config.mjs";
 
 const MACRO_APPLICATION_TAG = "advanced-activities-macro-application";
-const TIMING_FLAG_KEY = "pendingActivations";
 const patchedMessageModels = new WeakSet();
 
 function registerMacroTargetContext() {

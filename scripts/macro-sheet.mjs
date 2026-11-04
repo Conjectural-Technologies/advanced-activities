@@ -1,4 +1,4 @@
-import { MODULE_ID, createSettingsTray, localize } from "./module-config.mjs";
+import { MODULE_ID, createLevelRangeGroup, createSettingsTray, localize } from "./module-config.mjs";
 import {
   getMacroLevel, getMacroSettings, getMacroUuids, getTextEditor, renderMacroTooltip, reportMacroError,
   resolveMacro, setMacroUuids
@@ -222,31 +222,7 @@ async function buildMacroRow(activity, uuid, index, editable, expanded) {
 function buildMacroSettings(activity, uuid, editable, expanded = new Set()) {
   const level = getMacroLevel(activity, uuid);
   const { tray, wrapper } = createSettingsTray(uuid, expanded);
-  const group = document.createElement("div");
-  group.className = "form-group";
-  const title = document.createElement("label");
-  title.textContent = localize("DND5E.ACTIVITY.FIELDS.effects.element.level.label");
-  const fields = document.createElement("div");
-  fields.className = "form-fields range-fields";
-  const inputs = ["min", "max"].map(bound => {
-    const input = document.createElement("input");
-    input.type = "number";
-    input.min = "0";
-    input.step = "1";
-    input.placeholder = bound === "min" ? "0" : "\u221e";
-    input.value = level[bound] ?? "";
-    input.disabled = !editable;
-    input.setAttribute("aria-label", localize(`DND5E.LevelLimit.${bound === "min" ? "Min" : "Max"}`));
-    return input;
-  });
-  const connector = document.createElement("dnd5e-icon");
-  connector.className = "sep";
-  connector.setAttribute("src", "systems/dnd5e/icons/svg/range-connector.svg");
-  fields.append(inputs[0], connector, inputs[1]);
-  const hint = document.createElement("p");
-  hint.className = "hint";
-  hint.textContent = localize("ADVANCED_ACTIVITIES.LevelHint");
-  group.append(title, fields, hint);
+  const { group, inputs } = createLevelRangeGroup(level, "ADVANCED_ACTIVITIES.LevelHint", editable);
   wrapper.append(group);
   for ( const input of inputs ) {
     input.addEventListener("change", async event => {

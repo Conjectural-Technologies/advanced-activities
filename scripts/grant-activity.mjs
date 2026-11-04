@@ -1,4 +1,4 @@
-import { createSettingsTray, localize, MODULE_ID } from "./module-config.mjs";
+import { createLevelRangeGroup, createSettingsTray, isValidLevelRange, localize, MODULE_ID } from "./module-config.mjs";
 import { getTextEditor } from "./macro-config.mjs";
 import { prepareGrantExpiration } from "./grant-expiration.mjs";
 
@@ -108,30 +108,9 @@ function createGrantSettings(app, entry, item, index, expanded) {
   const quantityInput = quantityGroup.querySelector("formula-input");
   quantityInput.removeAttribute("name");
 
-  const levelGroup = document.createElement("div");
-  levelGroup.className = "form-group";
-  const levelLabel = document.createElement("label");
-  levelLabel.textContent = localize("DND5E.ACTIVITY.FIELDS.effects.element.level.label");
-  const levelFields = document.createElement("div");
-  levelFields.className = "form-fields range-fields";
-  const levelInputs = ["min", "max"].map(bound => {
-    const input = document.createElement("input");
-    input.type = "number";
-    input.min = "0";
-    input.step = "1";
-    input.placeholder = bound === "min" ? "0" : "\u221e";
-    input.value = entry.level?.[bound] ?? "";
-    input.setAttribute("aria-label", localize(`DND5E.LevelLimit.${bound === "min" ? "Min" : "Max"}`));
-    return input;
-  });
-  const connector = document.createElement("dnd5e-icon");
-  connector.className = "sep";
-  connector.setAttribute("src", "systems/dnd5e/icons/svg/range-connector.svg");
-  levelFields.append(levelInputs[0], connector, levelInputs[1]);
-  const levelHint = document.createElement("p");
-  levelHint.className = "hint";
-  levelHint.textContent = localize("ADVANCED_ACTIVITIES.Grant.LevelHint");
-  levelGroup.append(levelLabel, levelFields, levelHint);
+  const { group: levelGroup, inputs: levelInputs } = createLevelRangeGroup(
+    entry.level, "ADVANCED_ACTIVITIES.Grant.LevelHint"
+  );
   wrapper.append(quantityGroup, levelGroup);
 
   const saveEntry = async change => {
@@ -156,14 +135,13 @@ function createGrantSettings(app, entry, item, index, expanded) {
 
   for ( const input of levelInputs ) {
     input.addEventListener("change", async () => {
-      const values = levelInputs.map(field => field.value === "" ? null : Number(field.value));
-      if ( !values.every(value => value === null || (Number.isSafeInteger(value) && value >= 0))
-        || (values[0] !== null && values[1] !== null && values[0] > values[1]) ) {
+      const [min, max] = levelInputs.map(field => field.value === "" ? null : Number(field.value));
+      if ( !isValidLevelRange({ min, max }) ) {
         input.value = entry.level?.[input === levelInputs[0] ? "min" : "max"] ?? "";
         return;
       }
       await saveEntry(current => {
-        current.level = { min: values[0], max: values[1] };
+        current.level = { min, max };
       });
     });
   }
