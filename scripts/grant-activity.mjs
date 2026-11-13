@@ -5,6 +5,7 @@ import { prepareGrantExpiration } from "./grant-expiration.mjs";
 const GRANT_TEMPLATE = `modules/${MODULE_ID}/templates/activity/grant.hbs`;
 const GRANT_ICON = `modules/${MODULE_ID}/assets/svg/present.svg`;
 const MAX_GRANT_QUANTITY = 1000;
+export const GRANT_SOURCE_FLAG = "grantSource";
 const renderedApplications = new WeakMap();
 const expandedGrantSettings = new WeakMap();
 
@@ -427,6 +428,11 @@ export function registerGrantActivity() {
               const data = copy.toObject();
               if ( isStackable ) data.system.quantity = quantity;
               copyGrantRiders(this, grant, item, data);
+              foundry.utils.setProperty(data, `flags.${MODULE_ID}.${GRANT_SOURCE_FLAG}`, {
+                actorUuid: this.item.actor?.uuid ?? null,
+                itemUuid: this.item.uuid,
+                activityId: this.id
+              });
               prepareGrantExpiration(this, results, actor, data);
               copy.updateSource(data);
               return copy;

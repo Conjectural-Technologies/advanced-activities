@@ -5,11 +5,6 @@ export function localize(key, data) {
   return data ? game.i18n.format(key, data) : game.i18n.localize(key);
 }
 
-export function setButtonLabel(button, label) {
-  button.setAttribute("aria-label", label);
-  button.dataset.tooltip = label;
-}
-
 export function isValidLevelRange({ min, max }) {
   return [min, max].every(value => value === null || (Number.isSafeInteger(value) && value >= 0))
     && !(min !== null && max !== null && min > max);

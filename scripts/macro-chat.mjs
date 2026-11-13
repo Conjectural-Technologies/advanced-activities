@@ -1,6 +1,6 @@
 import { MODULE_ID, localize, TIMING_FLAG_KEY } from "./module-config.mjs";
 import {
-  FLAG_KEY, getMacroUuids, isMacroLevelEligible, renderMacroTooltip, reportMacroError, resolveMacro,
+  FLAG_KEY, getMacroRunMode, getMacroUuids, isMacroLevelEligible, renderMacroTooltip, reportMacroError, resolveMacro,
   resolveMacroTarget
 } from "./macro-config.mjs";
 
@@ -27,10 +27,98 @@ function registerMacroTargetContext() {
   patchedMessageModels.add(cls);
 }
 
+function partitionMacroUuids(activity) {
+  const modes = { manual: [], before: [], after: [] };
+  for ( const uuid of getMacroUuids(activity) ) {
+    let mode = "manual";
+    try {
+      mode = getMacroRunMode(activity, uuid);
+    } catch (error) {
+      reportMacroError(error);
+    }
+    modes[mode].push(uuid);
+  }
+  return modes;
+}
+
 export function onPreUseActivity(activity, usageConfig, dialogConfig, messageConfig) {
-  const uuids = getMacroUuids(activity);
-  if ( !uuids.length ) return;
-  foundry.utils.setProperty(messageConfig.data, `flags.${MODULE_ID}.${FLAG_KEY}`, uuids);
+  const { manual } = partitionMacroUuids(activity);
+  if ( !manual.length ) return;
+  foundry.utils.setProperty(messageConfig.data, `flags.${MODULE_ID}.${FLAG_KEY}`, manual);
+}
+
+async function resolveUsageTargets(activity, results) {
+  let uuids;
+  if ( activity.target?.affects?.type === "self" ) {
+    const actor = activity.item?.actor;
+    uuids = actor ? [actor.token?.uuid ?? actor.uuid] : [];
+  } else if ( results ) {
+    const message = results.message;
+    const descriptors = message?.system?.targets ?? message?.data?.system?.targets ?? [];
+    uuids = descriptors.map(target => target?.token ?? target?.actor).filter(Boolean);
+  } else {
+    uuids = Array.from(game.user.targets ?? []).map(token => token.document?.uuid).filter(Boolean);
+  }
+  const targets = await Promise.all([...new Set(uuids)].map(async uuid => {
+    try {
+      return await resolveMacroTarget(uuid);
+    } catch (error) {
+      reportMacroError(new Error(localize("ADVANCED_ACTIVITIES.TargetResolutionFailed", {
+        uuid, error: error?.message ?? String(error)
+      })));
+      return null;
+    }
+  }));
+  return targets.filter(Boolean);
+}
+
+export function onPostUseActivity(activity, usageConfig, results) {
+  const { after } = partitionMacroUuids(activity);
+  if ( !after.length ) return;
+  // Deferred so dnd5e can start the activity's subsequent actions before the macros run.
+  Promise.resolve().then(async () => {
+    const targets = await resolveUsageTargets(activity, results);
+    await executeMacros(activity, after, usageConfig, results, targets);
+  }).catch(reportMacroError);
+}
+
+/**
+ * Run an activity's "before use" macros. Any macro that returns false, fails, or cannot run cancels the use.
+ * @returns {Promise<boolean>}  Whether the activity may continue.
+ */
+export async function runBeforeUseMacros(activity, [usageConfig = {}, dialogConfig = {}, messageConfig = {}] = []) {
+  const { before } = partitionMacroUuids(activity);
+  if ( !before.length ) return true;
+  const targets = await resolveUsageTargets(activity, null);
+  const scope = { ...buildMacroScope(activity, targets), usageConfig, dialogConfig, messageConfig, results: null };
+  for ( const uuid of before ) {
+    let macro;
+    try {
+      if ( !isMacroLevelEligible(activity, uuid) ) continue;
+      macro = await resolveMacro(uuid);
+    } catch (error) {
+      reportMacroError(error);
+      return false;
+    }
+    if ( !macro ) {
+      ui.notifications?.error(localize("ADVANCED_ACTIVITIES.ErrorBeforeUseMissing", { activity: activity.name }));
+      return false;
+    }
+    if ( macro.canExecute === false ) {
+      ui.notifications?.warn(localize("ADVANCED_ACTIVITIES.WarnCannotExecute", { name: macro.name }));
+      return false;
+    }
+    try {
+      if ( (await macro.execute({ ...scope, message: null })) === false ) return false;
+    } catch (err) {
+      console.error(`${MODULE_ID} | Before-use macro "${macro.name}" threw an error.`, err);
+      ui.notifications?.error(localize("ADVANCED_ACTIVITIES.ErrorBeforeUseFailed", {
+        name: macro.name, activity: activity.name
+      }));
+      return false;
+    }
+  }
+  return true;
 }
 
 function shouldCollapseMacroTray(message) {
@@ -218,13 +306,21 @@ function registerMacroApplicationElement() {
   customElements.define(MACRO_APPLICATION_TAG, MacroApplicationElement);
 }
 
-async function executeMacros(activity, uuids, usageConfig, results, targets = []) {
+function buildMacroScope(activity, targets = []) {
   const item = activity.item ?? null;
   const actor = item?.actor ?? null;
   const token = actor?.token?.object ?? actor?.getActiveTokens?.()[0] ?? null;
-  const speaker = ChatMessage.implementation.getSpeaker(actor ? { actor } : {});
-  const targetActors = targets.map(target => target.actor);
-  const targetTokens = targets.map(target => target.token).filter(Boolean);
+  return {
+    speaker: ChatMessage.implementation.getSpeaker(actor ? { actor } : {}),
+    actor, token, activity, item, targets,
+    target: targets.length === 1 ? targets[0] : null,
+    targetActors: targets.map(target => target.actor),
+    targetTokens: targets.map(target => target.token).filter(Boolean)
+  };
+}
+
+async function executeMacros(activity, uuids, usageConfig, results, targets = []) {
+  const scope = buildMacroScope(activity, targets);
 
   for ( const uuid of uuids ) {
     try {
@@ -251,11 +347,7 @@ async function executeMacros(activity, uuids, usageConfig, results, targets = []
     }
 
     try {
-      await macro.execute({
-        speaker, actor, token, activity, item, usageConfig, results,
-        message: results?.message ?? null,
-        targets, target: targets.length === 1 ? targets[0] : null, targetActors, targetTokens
-      });
+      await macro.execute({ ...scope, usageConfig, results, message: results?.message ?? null });
     } catch (err) {
       console.error(`${MODULE_ID} | Macro "${macro.name}" threw an error.`, err);
       ui.notifications?.error(localize("ADVANCED_ACTIVITIES.ErrorMacroFailed", { name: macro.name }));

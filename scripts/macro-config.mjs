@@ -38,6 +38,30 @@ export function getMacroLevel(activity, uuid) {
   return { min, max };
 }
 
+export const RUN_MODES = Object.freeze(["manual", "before", "after"]);
+
+export function getMacroRunMode(activity, uuid) {
+  const setting = getMacroSettings(activity).find(entry => entry.uuid === uuid);
+  if ( RUN_MODES.includes(setting?.run) ) return setting.run;
+  // Settings saved before run modes existed used a boolean autoRun flag.
+  return setting?.autoRun === true ? "after" : "manual";
+}
+
+export async function updateMacroSetting(activity, uuid, changes) {
+  const current = getMacroSettings(activity).find(setting => setting.uuid === uuid);
+  const setting = {
+    uuid,
+    level: { min: current?.level?.min ?? null, max: current?.level?.max ?? null },
+    run: getMacroRunMode(activity, uuid),
+    ...changes
+  };
+  if ( !isValidLevelRange(setting.level) ) throw new Error(localize("ADVANCED_ACTIVITIES.LevelInvalid"));
+  if ( !RUN_MODES.includes(setting.run) ) setting.run = "manual";
+  const settings = getMacroSettings(activity).filter(entry => entry.uuid !== uuid);
+  if ( setting.level.min !== null || setting.level.max !== null || setting.run !== "manual" ) settings.push(setting);
+  await activity.update({ [`flags.${MODULE_ID}.macroSettings`]: settings });
+}
+
 export function isMacroLevelEligible(activity, uuid) {
   const { min, max } = getMacroLevel(activity, uuid);
   if ( min === null && max === null ) return true;

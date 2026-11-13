@@ -1,7 +1,7 @@
 import { MODULE_ID, createLevelRangeGroup, createSettingsTray, localize } from "./module-config.mjs";
 import {
-  getMacroLevel, getMacroSettings, getMacroUuids, getTextEditor, renderMacroTooltip, reportMacroError,
-  resolveMacro, setMacroUuids
+  getMacroLevel, getMacroRunMode, getMacroUuids, getTextEditor, renderMacroTooltip, reportMacroError,
+  resolveMacro, RUN_MODES, setMacroUuids, updateMacroSetting
 } from "./macro-config.mjs";
 
 const SECTION_CLASS = "advanced-activities-macros";
@@ -229,11 +229,7 @@ function buildMacroSettings(activity, uuid, editable, expanded = new Set()) {
       event.stopPropagation();
       const [min, max] = inputs.map(field => field.value === "" ? null : Number(field.value));
       try {
-        const candidate = { flags: { [MODULE_ID]: { macroSettings: [{ uuid, level: { min, max } }] } } };
-        getMacroLevel(candidate, uuid);
-        const settings = getMacroSettings(activity).filter(setting => setting.uuid !== uuid);
-        if ( min !== null || max !== null ) settings.push({ uuid, level: { min, max } });
-        await activity.update({ [`flags.${MODULE_ID}.macroSettings`]: settings });
+        await updateMacroSetting(activity, uuid, { level: { min, max } });
       } catch (error) {
         const saved = getMacroLevel(activity, uuid);
         inputs[0].value = saved.min ?? "";
@@ -242,7 +238,42 @@ function buildMacroSettings(activity, uuid, editable, expanded = new Set()) {
       }
     });
   }
+  wrapper.append(buildRunModeGroup(activity, uuid, editable));
   return tray;
+}
+
+function buildRunModeGroup(activity, uuid, editable) {
+  const group = document.createElement("div");
+  group.className = "form-group";
+  const id = `macro-run-mode-${foundry.utils.randomID()}`;
+  const label = document.createElement("label");
+  label.htmlFor = id;
+  label.textContent = localize("ADVANCED_ACTIVITIES.RunMode");
+  const fields = document.createElement("div");
+  fields.className = "form-fields";
+  const select = document.createElement("select");
+  select.id = id;
+  select.disabled = !editable;
+  const current = getMacroRunMode(activity, uuid);
+  for ( const mode of RUN_MODES ) {
+    const option = document.createElement("option");
+    option.value = mode;
+    option.textContent = localize(`ADVANCED_ACTIVITIES.RunModes.${mode}`);
+    option.selected = mode === current;
+    select.append(option);
+  }
+  select.addEventListener("change", async event => {
+    event.stopPropagation();
+    try {
+      await updateMacroSetting(activity, uuid, { run: select.value });
+    } catch (error) {
+      select.value = getMacroRunMode(activity, uuid);
+      reportMacroError(error);
+    }
+  });
+  fields.append(select);
+  group.append(label, fields);
+  return group;
 }
 
 function buildMacroIcon(macro) {

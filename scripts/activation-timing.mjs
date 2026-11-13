@@ -1,4 +1,5 @@
 import { MODULE_ID, localize, TIMING_FLAG_KEY as FLAG_KEY } from "./module-config.mjs";
+import { runBeforeUseMacros } from "./macro-chat.mjs";
 
 const patchedClasses = new WeakSet();
 const waiters = new Map();
@@ -155,7 +156,7 @@ async function finalizeDelayedUsage(sourceActivity, usageConfig, messageConfig, 
     const update = foundry.utils.deepClone(generated);
     delete update.id;
     delete update._id;
-    foundry.utils.setProperty(update, `flags.${MODULE_ID}.-=${FLAG_KEY}`, null);
+    foundry.utils.setProperty(update, `flags.${MODULE_ID}.${FLAG_KEY}`, new foundry.data.operators.ForcedDeletion());
     await existing.update(update);
     results.message = existing;
   } else results.message = generated;
@@ -469,8 +470,11 @@ export function registerTimedActivityUses() {
         const original = cls.prototype.use;
         cls.prototype.use = async function(...args) {
           try {
-            if ( activationSeconds(this) === null || !this.item?.isEmbedded
-              || !this.item.isOwner || this.canUse === false ) return original.apply(this, args);
+            if ( !this.item?.isEmbedded || !this.item.isOwner || this.canUse === false ) {
+              return original.apply(this, args);
+            }
+            if ( !(await runBeforeUseMacros(this, args)) ) return;
+            if ( activationSeconds(this) === null ) return original.apply(this, args);
             return await schedule(this, args);
           } catch (error) {
             report(error, this.name);
